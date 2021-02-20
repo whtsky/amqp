@@ -23,6 +23,7 @@ const (
 
 	defaultHeartbeat         = 10 * time.Second
 	defaultConnectionTimeout = 30 * time.Second
+	defaultChannelOpTimeout  = 2 * defaultConnectionTimeout
 	defaultProduct           = "https://github.com/streadway/amqp"
 	defaultVersion           = "β"
 	// Safer default that makes channel leaks a lot easier to spot
@@ -44,9 +45,10 @@ type Config struct {
 	// bindings on the server.  Dial sets this to the path parsed from the URL.
 	Vhost string
 
-	ChannelMax int           // 0 max channels means 2^16 - 1
-	FrameSize  int           // 0 max bytes means unlimited
-	Heartbeat  time.Duration // less than 1s uses the server's interval
+	ChannelMax       int           // 0 max channels means 2^16 - 1
+	FrameSize        int           // 0 max bytes means unlimited
+	Heartbeat        time.Duration // less than 1s uses the server's interval
+	ChannelOpTimeout time.Duration // timeout for channel operations
 
 	// TLSClientConfig specifies the client configuration of the TLS connection
 	// when establishing a tls transport.
@@ -139,8 +141,9 @@ func DefaultDial(connectionTimeout time.Duration) func(network, addr string) (ne
 // scheme.  It is equivalent to calling DialTLS(amqp, nil).
 func Dial(url string) (*Connection, error) {
 	return DialConfig(url, Config{
-		Heartbeat: defaultHeartbeat,
-		Locale:    defaultLocale,
+		Heartbeat:        defaultHeartbeat,
+		ChannelOpTimeout: defaultChannelOpTimeout,
+		Locale:           defaultLocale,
 	})
 }
 
@@ -151,9 +154,10 @@ func Dial(url string) (*Connection, error) {
 // DialTLS uses the provided tls.Config when encountering an amqps:// scheme.
 func DialTLS(url string, amqps *tls.Config) (*Connection, error) {
 	return DialConfig(url, Config{
-		Heartbeat:       defaultHeartbeat,
-		TLSClientConfig: amqps,
-		Locale:          defaultLocale,
+		Heartbeat:        defaultHeartbeat,
+		ChannelOpTimeout: defaultChannelOpTimeout,
+		TLSClientConfig:  amqps,
+		Locale:           defaultLocale,
 	})
 }
 
@@ -781,6 +785,10 @@ func (c *Connection) openTune(config Config, auth Authentication) error {
 	c.Config.Heartbeat = time.Second * time.Duration(pick(
 		int(config.Heartbeat/time.Second),
 		int(tune.Heartbeat)))
+
+	if c.Config.ChannelOpTimeout == 0 {
+		c.Config.ChannelOpTimeout = defaultChannelOpTimeout
+	}
 
 	// "The client should start sending heartbeats after receiving a
 	// Connection.Tune method"
