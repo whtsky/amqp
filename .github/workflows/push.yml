@@ -1,0 +1,47 @@
+on:
+  push:
+  pull_request:
+name: Main workflow
+jobs:
+  unit-test:
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        go: ["1.11", "1.12", "1.13", "1.14", "1.15", "1.16"]
+    name: Go ${{ matrix.go }} test
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup go
+        uses: actions/setup-go@v1
+        with:
+          go-version: ${{ matrix.go }}
+      - name: unit test
+        run: go test -coverprofile=coverage.out
+        env:
+          GO111MODULE: on
+      - uses: codecov/codecov-action@v1
+  integration-test:
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        go: ["1.10", "1.11", "1.12", "1.13", "1.14", "1.15", "1.16"]
+    services:
+      rabbitmq:
+        image: rabbitmq:3
+        ports:
+          - 5672/tcp
+        options: --health-cmd "rabbitmqctl node_health_check" --health-interval 10s --health-timeout 5s --health-retries 5
+    name: Go ${{ matrix.go }} test
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup go
+        uses: actions/setup-go@v1
+        with:
+          go-version: ${{ matrix.go }}
+      - name: integration test
+        run: |
+          go test -coverprofile=coverage.out -cpu=1,2 -v -tags integration ./...
+        env:
+          GO111MODULE: on
+          AMQP_URL: amqp://guest:guest@localhost:${{ job.services.rabbitmq.ports[5672] }}
+      - uses: codecov/codecov-action@v1
